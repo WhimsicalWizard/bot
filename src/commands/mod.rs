@@ -1,7 +1,6 @@
 pub mod id;
 pub mod math;
 pub mod meta;
-pub mod model;
 pub mod owner;
 pub mod ping;
 pub mod slash;

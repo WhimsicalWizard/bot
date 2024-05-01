@@ -44,10 +44,6 @@ impl EventHandler for Handler {
             let content = match command.data.name.as_str() {
                 "ping" => Some(commands::ping::run(&command.data.options())),
 
-                // "modal" => {
-                //     commands::modal::run(&ctx, &command).await.unwrap();
-                //     None
-                // }
                 _ => Some("not implemented :(".to_string()),
             };
 
