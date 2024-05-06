@@ -1,4 +1,5 @@
-#![allow(deprecated)] // We recommend migrating to poise, instead of using the standard command framework.
+#![allow(deprecated)]
+
 mod commands;
 
 use serenity::async_trait;
@@ -8,33 +9,28 @@ use serenity::framework::standard::Configuration;
 use serenity::framework::StandardFramework;
 use serenity::gateway::ShardManager;
 use serenity::http::Http;
-use serenity::model::application::{Command, Interaction};
+use serenity::model::application::Interaction;
 use serenity::model::event::ResumedEvent;
 use serenity::model::gateway::Ready;
-use serenity::model::guild;
 use serenity::model::id::GuildId;
 use serenity::prelude::*;
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
-use tracing::error;
+use tracing::{error, info};
 
-use crate::commands::math::*;
-use crate::commands::meta::*;
-use crate::commands::owner::*;
-use crate::commands::slash::*;
-
+use crate::commands::active::ACTIVE_COMMAND;
+use crate::commands::math::MULTIPLY_COMMAND;
+use crate::commands::meta::PING_COMMAND;
+use crate::commands::owner::QUIT_COMMAND;
 pub struct ShardManagerContainer;
 
 impl TypeMapKey for ShardManagerContainer {
     type Value = Arc<ShardManager>;
 }
 
-#[group]
-#[commands(multiply, ping, quit)]
-struct General;
-
 struct Handler;
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -43,6 +39,8 @@ impl EventHandler for Handler {
 
             let content = match command.data.name.as_str() {
                 "ping" => Some(commands::ping::run(&command.data.options())),
+                "id" => Some(commands::id::run(&command.data.options())),
+                "welcome" => Some(commands::welcome::run(&command.data.options())),
 
                 _ => Some("not implemented :(".to_string()),
             };
@@ -58,7 +56,7 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("Connected as {}", ready.user.name);
+        info!("Connected as {}", ready.user.name);
 
         let guild_id = GuildId::new(
             env::var("GUILD_ID")
@@ -67,29 +65,35 @@ impl EventHandler for Handler {
                 .expect("GUILD_ID must be an integer"),
         );
 
-        let commands = guild_id
+        match guild_id
             .set_commands(
                 &ctx.http,
-                vec![commands::ping::register(), commands::id::register()],
+                vec![
+                    commands::ping::register(),
+                    commands::welcome::register(),
+                    commands::id::register(),
+                ],
             )
-            .await;
-
-        println!("I now have the following guild slash commands: {commands:#?}");
+            .await
+        {
+            Ok(_) => info!("Successfully set guild commands"),
+            Err(why) => error!("Failed to set guild commands: {:?}", why),
+        }
     }
 
     async fn resume(&self, _: Context, _: ResumedEvent) {
-        println!("Resumed");
+        info!("Resumed");
     }
 }
+
+#[group]
+#[commands(active, multiply, ping, quit)]
+struct General;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().expect("Failed to load .env file");
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-
-    let _ = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
 
     let http = Http::new(&token);
 
@@ -113,6 +117,7 @@ async fn main() {
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(&token, intents)
+        .intents(intents)
         .framework(framework)
         .event_handler(Handler)
         .await
